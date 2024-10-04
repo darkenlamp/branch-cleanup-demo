@@ -1,0 +1,120 @@
+name: Branch Cleanup Workflow
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight UTC
+
+permissions:
+  contents: write
+
+jobs:
+  archive_and_delete_branches:
+    runs-on: ubuntu-latest
+    env:
+      DAYS_INACTIVE: 1 # Number of days a branch must be inactive to be archived
+      DAYS_ARCHIVED: 1 # Number of days an archived branch must exist before deletion
+      DRY_RUN: false # Set to 'true' for initial testing to avoid actual changes
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all branches to ensure we have the full history for each branch
+
+      - name: Configure Git
+        run: |
+          # Set Git user information for commit operations
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get list of branches
+        id: get_branches
+        run: |
+          # Get a list of all branches sorted by the last commit date, along with their commit timestamp
+          git for-each-ref --sort=-committerdate refs/heads/ --format='%(refname:short) %(committerdate:unix)' > branches.txt
+          # Output the list of branches for logging purposes
+          echo "Branches and commit dates:"
+          cat branches.txt
+
+      - name: Archive stale branches
+        if: env.DRY_RUN == 'false'
+        run: |
+          CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
+          echo "Current timestamp: $CURRENT_DATE"
+          while read -r branch date; do
+            echo "Checking branch: $branch with last commit date: $date"
+            # Skip protected branches (main, master) and branches that are already archived
+            if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == archive/* ]]; then
+              echo "Skipping protected or already archived branch: $branch"
+              continue
+            fi
+            # Calculate the number of days since the branch was last active
+            INACTIVE_DAYS=$(( (CURRENT_DATE - date) / 86400 ))
+            echo "Branch $branch has been inactive for $INACTIVE_DAYS days"
+            # Archive the branch if it has been inactive for more than DAYS_INACTIVE
+            if [ "$INACTIVE_DAYS" -ge "$DAYS_INACTIVE" ]; then
+              echo "Archiving branch: $branch"
+              # Rename the branch to add the 'archive/' prefix
+              git branch -m "$branch" "archive/$branch"
+              # Push the renamed branch to the remote and delete the original branch
+              git push origin "archive/$branch"
+              git push origin --delete "$branch"
+              echo "Branch $branch archived as archive/$branch"
+            fi
+          done < branches.txt
+
+      - name: Delete archived branches
+        if: env.DRY_RUN == 'false'
+        run: |
+          CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
+          echo "Current timestamp: $CURRENT_DATE"
+          while read -r branch date; do
+            echo "Checking branch: $branch with last commit date: $date"
+            # Target only branches that have already been archived (prefixed with 'archive/')
+            if [[ "$branch" == archive/* ]]; then
+              # Calculate the number of days since the branch was archived
+              ARCHIVED_DAYS=$(( (CURRENT_DATE - date) / 86400 ))
+              echo "Branch $branch has been archived for $ARCHIVED_DAYS days"
+              # Delete the branch if it has been archived for more than DAYS_ARCHIVED
+              if [ "$ARCHIVED_DAYS" -ge "$DAYS_ARCHIVED" ]; then
+                echo "Deleting archived branch: $branch"
+                # Delete the branch from the remote repository
+                git push origin --delete "$branch"
+                echo "Branch $branch deleted"
+              fi
+            fi
+          done < branches.txt
+
+      - name: Dry run logging
+        if: env.DRY_RUN == 'true'
+        run: |
+          CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
+          echo "Current timestamp: $CURRENT_DATE"
+          while read -r branch date; do
+            echo "Checking branch: $branch with last commit date: $date"
+            # Skip protected branches (main, master) and branches that are already archived
+            if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == archive/* ]]; then
+              echo "Skipping protected or already archived branch: $branch"
+              continue
+            fi
+            # Calculate the number of days since the branch was last active
+            INACTIVE_DAYS=$(( (CURRENT_DATE - date) / 86400 ))
+            echo "Branch $branch has been inactive for $INACTIVE_DAYS days"
+            # Log the branches that would be archived if not in dry run mode
+            if [ "$INACTIVE_DAYS" -ge "$DAYS_INACTIVE" ]; then
+              echo "[DRY RUN] Archiving branch: $branch"
+            fi
+          done < branches.txt
+
+          while read -r branch date; do
+            echo "Checking branch: $branch with last commit date: $date"
+            # Target only branches that have already been archived (prefixed with 'archive/')
+            if [[ "$branch" == archive/* ]]; then
+              # Calculate the number of days since the branch was archived
+              ARCHIVED_DAYS=$(( (CURRENT_DATE - date) / 86400 ))
+              echo "Branch $branch has been archived for $ARCHIVED_DAYS days"
+              # Log the branches that would be deleted if not in dry run mode
+              if [ "$ARCHIVED_DAYS" -ge "$DAYS_ARCHIVED" ]; then
+                echo "[DRY RUN] Deleting archived branch: $branch"
+              fi
+            fi
+          done < branches.txt
