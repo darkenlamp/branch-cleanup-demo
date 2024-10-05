@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Archive stale branches
-        if: "env.ENABLE_DRY_RUN != 'true'"
+        if: "env.ENABLE_DRY_RUN != 'false'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -82,7 +82,7 @@ jobs:
           echo "[DEBUG] Completed archive process" | tee -a cleanup.log
 
       - name: Delete archived branches
-        if: "env.ENABLE_DRY_RUN != 'true'"
+        if: "env.ENABLE_DRY_RUN != 'false'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -114,7 +114,7 @@ jobs:
           echo "[DEBUG] Completed deletion process" | tee -a cleanup.log
 
       - name: Dry run logging
-        if: "env.ENABLE_DRY_RUN == 'true'"
+        if: "env.ENABLE_DRY_RUN == 'false'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -165,7 +165,7 @@ jobs:
           path: cleanup.log
 
       - name: Send Email Notification (Optional)
-        if: "env.ENABLE_DRY_RUN != 'true'"
+        if: "env.ENABLE_DRY_RUN != 'false'"
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
