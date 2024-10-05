@@ -12,9 +12,9 @@ jobs:
   archive_and_delete_branches:
     runs-on: ubuntu-latest
     env:
-      DAYS_INACTIVE: 0 # Number of days a branch must be inactive to be archived
-      DAYS_ARCHIVED: 0 # Number of days an archived branch must exist before deletion
-      ENABLE_DRY_RUN: false # Toggle for enabling dry run mode; set to 'true' for testing # Set to 'true' for initial testing to avoid actual changes
+      DAYS_INACTIVE: 1 # Set a valid number of days a branch must be inactive to be archived
+      DAYS_ARCHIVED: 1 # Set a valid number of days an archived branch must exist before deletion
+      ENABLE_DRY_RUN: false # Toggle for enabling dry run mode; set to 'true' for testing
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
 
       - name: Configure Git
         run: |
-          # Configure Git user information for automated commit operations
+          # Configure Git user for subsequent actions
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "[DEBUG] Configured Git user.name and user.email" | tee -a cleanup.log
@@ -31,14 +31,22 @@ jobs:
       - name: Get list of branches
         id: get_branches
         run: |
-          # Get a list of all branches sorted by the last commit date, along with their commit timestamp
+          # Get all branches sorted by last commit date, along with commit timestamp
           git for-each-ref --sort=-committerdate refs/heads/ --format='%(refname:short) %(committerdate:unix)' > branches.txt
           echo "Branches and commit dates:" | tee -a cleanup.log
           cat branches.txt | tee -a cleanup.log
           echo "[DEBUG] Retrieved list of branches" | tee -a cleanup.log
 
+      - name: Validate environment variables
+        run: |
+          # Validate that DAYS_INACTIVE and DAYS_ARCHIVED are set to valid values
+          if [ "$DAYS_INACTIVE" -le 0 ] || [ "$DAYS_ARCHIVED" -le 0 ]; then
+            echo "[ERROR] DAYS_INACTIVE and DAYS_ARCHIVED must be greater than 0." | tee -a cleanup.log
+            exit 1
+          fi
+
       - name: Archive stale branches
-        if: "env.ENABLE_DRY_RUN != 'false'"
+        if: "env.ENABLE_DRY_RUN != 'true'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -47,10 +55,11 @@ jobs:
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
           echo "[DEBUG] Starting archive process" | tee -a cleanup.log
+          ARCHIVED_COUNT=0
           # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
-            # Skip protected branches (main, master) and branches that are already archived
+            # Skip protected branches and branches already archived
             if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == archive/* ]]; then
               echo "Skipping protected or already archived branch: $branch" | tee -a cleanup.log
               continue
@@ -61,19 +70,19 @@ jobs:
             # Archive the branch if it has been inactive for more than DAYS_INACTIVE
             if [ "$INACTIVE_DAYS" -ge "$DAYS_INACTIVE" ]; then
               echo "Archiving branch: $branch" | tee -a cleanup.log
-              # Rename the branch to add the 'archive/' prefix
-              git branch -m "$branch" "archive/$branch"
-              # Push the renamed branch to the remote and delete the original branch
-              git push origin "archive/$branch"
-              git push origin --delete "$branch"
+              git branch -m "$branch" "archive/$branch" # Rename branch with 'archive/' prefix
+              git push origin "archive/$branch" > /dev/null 2>&1 || { echo "[ERROR] Failed to push archived branch: $branch" | tee -a cleanup.log; exit 1; }
+              git push origin --delete "$branch" > /dev/null 2>&1 || { echo "[ERROR] Failed to delete original branch: $branch" | tee -a cleanup.log; exit 1; }
               echo "Branch $branch archived as archive/$branch in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
               echo "[DEBUG] Archived branch: $branch" | tee -a cleanup.log
+              ARCHIVED_COUNT=$((ARCHIVED_COUNT + 1))
             fi
           done < branches.txt
+          echo "[INFO] Archived branches: $ARCHIVED_COUNT" | tee -a cleanup.log
           echo "[DEBUG] Completed archive process" | tee -a cleanup.log
 
       - name: Delete archived branches
-        if: "env.DRY_RUN == 'false'"
+        if: "env.ENABLE_DRY_RUN != 'true'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -82,6 +91,7 @@ jobs:
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
           echo "[DEBUG] Starting deletion process" | tee -a cleanup.log
+          DELETED_COUNT=0
           # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
@@ -93,21 +103,22 @@ jobs:
               # Delete the branch if it has been archived for more than DAYS_ARCHIVED
               if [ "$ARCHIVED_DAYS" -ge "$DAYS_ARCHIVED" ]; then
                 echo "Deleting archived branch: $branch" | tee -a cleanup.log
-                # Delete the branch from the remote repository
-                git push origin --delete "$branch"
+                git push origin --delete "$branch" > /dev/null 2>&1 || { echo "[ERROR] Failed to delete archived branch: $branch" | tee -a cleanup.log; exit 1; }
                 echo "Branch $branch deleted in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
                 echo "[DEBUG] Deleted branch: $branch" | tee -a cleanup.log
+                DELETED_COUNT=$((DELETED_COUNT + 1))
               fi
             fi
           done < branches.txt
+          echo "[INFO] Deleted branches: $DELETED_COUNT" | tee -a cleanup.log
           echo "[DEBUG] Completed deletion process" | tee -a cleanup.log
 
       - name: Dry run logging
-        if: "env.ENABLE_DRY_RUN == 'false'"
+        if: "env.ENABLE_DRY_RUN == 'true'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
-          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f2 | cut -d'.' -f1)
+          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f3 | cut -d'.' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
@@ -115,7 +126,7 @@ jobs:
           # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
-            # Skip protected branches (main, master) and branches that are already archived
+            # Skip protected branches and branches already archived
             if [[ "$branch" == "main" || "$branch" == "master" || "$branch" == archive/* ]]; then
               echo "Skipping protected or already archived branch: $branch" | tee -a cleanup.log
               continue
@@ -152,3 +163,18 @@ jobs:
         with:
           name: branch-cleanup-logs
           path: cleanup.log
+
+      - name: Send Email Notification (Optional)
+        if: "env.ENABLE_DRY_RUN != 'true'"
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.example.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Branch Cleanup Workflow Summary"
+          body: |
+            Branch Cleanup Workflow completed.
+            Archived branches: ${{ env.ARCHIVED_COUNT }}
+            Deleted branches: ${{ env.DELETED_COUNT }}
+          to: beatsbysin@gmail.com
