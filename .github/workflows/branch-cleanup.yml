@@ -12,8 +12,8 @@ jobs:
   archive_and_delete_branches:
     runs-on: ubuntu-latest
     env:
-      DAYS_INACTIVE: 90 # Number of days a branch must be inactive to be archived
-      DAYS_ARCHIVED: 30 # Number of days an archived branch must exist before deletion
+      DAYS_INACTIVE: 0 # Number of days a branch must be inactive to be archived
+      DAYS_ARCHIVED: 0 # Number of days an archived branch must exist before deletion
       DRY_RUN: false # Set to 'true' for initial testing to avoid actual changes
     steps:
       - name: Checkout repository
@@ -92,7 +92,7 @@ jobs:
           done < branches.txt
 
       - name: Dry run logging
-        if: env.DRY_RUN == 'true'
+        if: env.DRY_RUN == 'false'
         run: |
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url)) # Get repository name
           REPO_OWNER=$(git config --get remote.origin.url | cut -d':' -f2 | cut -d'/' -f1) # Get repository owner
@@ -130,7 +130,7 @@ jobs:
           done < branches.txt
 
       - name: Upload log file as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: branch-cleanup-logs
           path: cleanup.log
