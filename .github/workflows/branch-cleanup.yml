@@ -23,27 +23,31 @@ jobs:
 
       - name: Configure Git
         run: |
-          # Set Git user information for commit operations
+          # Configure Git user information for automated commit operations
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          echo "[DEBUG] Configured Git user.name and user.email" | tee -a cleanup.log
 
       - name: Get list of branches
         id: get_branches
         run: |
           # Get a list of all branches sorted by the last commit date, along with their commit timestamp
           git for-each-ref --sort=-committerdate refs/heads/ --format='%(refname:short) %(committerdate:unix)' > branches.txt
-          # Output the list of branches for logging purposes
           echo "Branches and commit dates:" | tee -a cleanup.log
           cat branches.txt | tee -a cleanup.log
+          echo "[DEBUG] Retrieved list of branches" | tee -a cleanup.log
 
       - name: Archive stale branches
-        if: env.DRY_RUN == 'false'
+        if: "env.DRY_RUN == 'false'"
         run: |
-          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url)) # Get repository name
-          REPO_OWNER=$(git config --get remote.origin.url | cut -d':' -f2 | cut -d'/' -f1) # Get repository owner
+          # Extract repository name and owner from the remote URL
+          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
+          REPO_OWNER=$(basename -s .git $(git config --get remote.origin.url) | cut -d':' -f2 | cut -d'/' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
+          echo "[DEBUG] Starting archive process" | tee -a cleanup.log
+          # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
             # Skip protected branches (main, master) and branches that are already archived
@@ -63,17 +67,22 @@ jobs:
               git push origin "archive/$branch"
               git push origin --delete "$branch"
               echo "Branch $branch archived as archive/$branch in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
+              echo "[DEBUG] Archived branch: $branch" | tee -a cleanup.log
             fi
           done < branches.txt
+          echo "[DEBUG] Completed archive process" | tee -a cleanup.log
 
       - name: Delete archived branches
-        if: env.DRY_RUN == 'false'
+        if: "env.DRY_RUN == 'false'"
         run: |
-          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url)) # Get repository name
-          REPO_OWNER=$(git config --get remote.origin.url | cut -d':' -f2 | cut -d'/' -f1) # Get repository owner
+          # Extract repository name and owner from the remote URL
+          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
+          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f2 | cut -d'.' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
+          echo "[DEBUG] Starting deletion process" | tee -a cleanup.log
+          # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
             # Target only branches that have already been archived (prefixed with 'archive/')
@@ -87,18 +96,23 @@ jobs:
                 # Delete the branch from the remote repository
                 git push origin --delete "$branch"
                 echo "Branch $branch deleted in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
+                echo "[DEBUG] Deleted branch: $branch" | tee -a cleanup.log
               fi
             fi
           done < branches.txt
+          echo "[DEBUG] Completed deletion process" | tee -a cleanup.log
 
       - name: Dry run logging
-        if: env.DRY_RUN == 'false'
+        if: "env.DRY_RUN == 'true'"
         run: |
-          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url)) # Get repository name
-          REPO_OWNER=$(git config --get remote.origin.url | cut -d':' -f2 | cut -d'/' -f1) # Get repository owner
+          # Extract repository name and owner from the remote URL
+          REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
+          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f2 | cut -d'.' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
+          echo "[DEBUG] Starting dry run process" | tee -a cleanup.log
+          # Loop through each branch and its commit date
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
             # Skip protected branches (main, master) and branches that are already archived
@@ -112,9 +126,11 @@ jobs:
             # Log the branches that would be archived if not in dry run mode
             if [ "$INACTIVE_DAYS" -ge "$DAYS_INACTIVE" ]; then
               echo "[DRY RUN] Archiving branch: $branch in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
+              echo "[DEBUG] Dry run - would archive branch: $branch" | tee -a cleanup.log
             fi
           done < branches.txt
 
+          # Loop through each branch and its commit date to check for deletion
           while read -r branch date; do
             echo "Checking branch: $branch with last commit date: $date" | tee -a cleanup.log
             # Target only branches that have already been archived (prefixed with 'archive/')
@@ -125,9 +141,11 @@ jobs:
               # Log the branches that would be deleted if not in dry run mode
               if [ "$ARCHIVED_DAYS" -ge "$DAYS_ARCHIVED" ]; then
                 echo "[DRY RUN] Deleting archived branch: $branch in repository $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
+                echo "[DEBUG] Dry run - would delete branch: $branch" | tee -a cleanup.log
               fi
             fi
           done < branches.txt
+          echo "[DEBUG] Completed dry run process" | tee -a cleanup.log
 
       - name: Upload log file as artifact
         uses: actions/upload-artifact@v4
