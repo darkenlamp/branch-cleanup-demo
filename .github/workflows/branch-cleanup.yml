@@ -42,7 +42,7 @@ jobs:
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
-          REPO_OWNER=$(basename -s .git $(git config --get remote.origin.url) | cut -d':' -f2 | cut -d'/' -f1)
+          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f3 | cut -d'.' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
@@ -77,7 +77,7 @@ jobs:
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
-          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f2 | cut -d'.' -f1)
+          REPO_OWNER=$(git config --get remote.origin.url | cut -d'/' -f3 | cut -d'.' -f1)
           CURRENT_DATE=$(date +%s) # Get the current date in Unix timestamp format
           echo "Repository: $REPO_OWNER/$REPO_NAME" | tee -a cleanup.log
           echo "Current timestamp: $CURRENT_DATE" | tee -a cleanup.log
