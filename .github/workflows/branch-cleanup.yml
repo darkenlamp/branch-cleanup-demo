@@ -177,5 +177,5 @@ jobs:
             Branch Cleanup Workflow completed.
             Archived branches: ${{ env.ARCHIVED_COUNT }}
             Deleted branches: ${{ env.DELETED_COUNT }}
-          from: beatsbysin@gmail.com
+          from: hayden.sin@gmail.com
           to: beatsbysin@gmail.com
