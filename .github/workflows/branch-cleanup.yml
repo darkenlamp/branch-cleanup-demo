@@ -14,7 +14,7 @@ jobs:
     env:
       DAYS_INACTIVE: 0 # Number of days a branch must be inactive to be archived
       DAYS_ARCHIVED: 0 # Number of days an archived branch must exist before deletion
-      DRY_RUN: false # Set to 'true' for initial testing to avoid actual changes
+      ENABLE_DRY_RUN: false # Toggle for enabling dry run mode; set to 'true' for testing # Set to 'true' for initial testing to avoid actual changes
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
           echo "[DEBUG] Retrieved list of branches" | tee -a cleanup.log
 
       - name: Archive stale branches
-        if: "env.DRY_RUN == 'false'"
+        if: "env.ENABLE_DRY_RUN != 'true'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
@@ -103,7 +103,7 @@ jobs:
           echo "[DEBUG] Completed deletion process" | tee -a cleanup.log
 
       - name: Dry run logging
-        if: "env.DRY_RUN == 'false'"
+        if: "env.ENABLE_DRY_RUN == 'true'"
         run: |
           # Extract repository name and owner from the remote URL
           REPO_NAME=$(basename -s .git $(git config --get remote.origin.url))
